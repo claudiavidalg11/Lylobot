@@ -1,35 +1,44 @@
-// prisma/schema.prisma
+// ---------- Conexión a la base de datos ----------
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
+// ---------- Cliente de Prisma ----------
 generator client {
   provider = "prisma-client-js"
 }
 
-// Tablas del chatbot (sin campo consent para evitar tipos)
+// ---------- Tablas del chatbot ----------
 model Lead {
-  id         String    @id @default(cuid())
-  createdAt  DateTime  @default(now())
-  name       String?
-  contact    String?   @unique
-  sector     String?
-  goal       String?
-  budget     String?
-  timing     String?
-  url        String?
-  messages   Message[]
+  id        String    @id @default(cuid())
+  consent   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  // Campos de info opcionales
+  name      String?
+  contact   String?   @unique
+  sector    String?
+  goal      String?
+  budget    String?
+  timing    String?
+  url       String?
+
+  // Relación con los mensajes
+  messages  Message[]
 }
 
 model Message {
-  id         String    @id @default(cuid())
-  leadId     String
-  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  role       String    // "user" | "assistant"
-  content    String
-  createdAt  DateTime  @default(now())
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  // "user" | "assistant"
+  role      String
+  content   String
+  createdAt DateTime @default(now())
 }
+
 
   embedding Bytes    // guardamos el embedding como binario (no necesitas pgvector)
   createdAt DateTime @default(now())
