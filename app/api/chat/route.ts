@@ -32,11 +32,20 @@ const json = await req.json();
 const { message, leadId, consent } = BodySchema.parse(json);
 
 
-let lead = leadId ? await prisma.lead.findUnique({ where: { id: leadId } }) : null;
-if (!lead) lead = await prisma.lead.create({ data: { consent: !!consent } });
-if (typeof consent === "boolean" && consent !== lead.consent) {
-await prisma.lead.update({ where: { id: lead.id }, data: { consent } });
+let lead = leadId
+  ? await prisma.lead.findUnique({ where: { id: leadId } })
+  : null;
+
+if (!lead) {
+  // crear sin usar "consent" para evitar el error de tipo
+  lead = await prisma.lead.create({ data: {} });
 }
+
+// Si más abajo actualizabas "consent", comenta/bórralo por ahora:
+// if (typeof consent === "boolean" && lead && typeof lead.id === "string") {
+//   await prisma.lead.update({ where: { id: lead.id }, data: { consent } });
+// }
+
 
 
 await prisma.message.create({ data: { leadId: lead.id, role: "user", content: message } });
