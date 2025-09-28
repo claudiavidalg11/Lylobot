@@ -16,6 +16,8 @@ generator client {
 
 model Lead {
   id         String    @id @default(cuid())
+  consent   Boolean  @default(false)  
+}
   name       String?
   contact    String?   @unique
   sector     String?
