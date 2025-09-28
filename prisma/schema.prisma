@@ -1,49 +1,36 @@
-
 // prisma/schema.prisma
-
-// 1) Conexión a tu Postgres (usa la DATABASE_URL que pusiste en Vercel)
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// 2) Generador del cliente Prisma
 generator client {
   provider = "prisma-client-js"
 }
 
-// 3) Tablas del chatbot
-
+// Tablas del chatbot (sin campo consent para evitar tipos)
 model Lead {
   id         String    @id @default(cuid())
-  consent   Boolean  @default(false)  
-createdAt DateTime @default(now())
-}
-name       String?
+  createdAt  DateTime  @default(now())
+  name       String?
   contact    String?   @unique
   sector     String?
   goal       String?
   budget     String?
   timing     String?
   url        String?
-  createdAt  DateTime  @default(now())
   messages   Message[]
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  leadId    String
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  role      String   // "user" | "assistant" | ...
-  content   String
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  leadId     String
+  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  role       String    // "user" | "assistant"
+  content    String
+  createdAt  DateTime  @default(now())
 }
 
-model Doc {
-  id        String   @id @default(cuid())
-  title     String
-  text      String
-  url       String?
   embedding Bytes    // guardamos el embedding como binario (no necesitas pgvector)
   createdAt DateTime @default(now())
 }
