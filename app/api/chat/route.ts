@@ -1,3 +1,4 @@
+// app/api/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -5,75 +6,78 @@ import { openai } from "@/lib/openai";
 import { SYSTEM_PROMPT } from "@/lib/prompts";
 import { searchRelevant } from "@/lib/rag";
 
-
+// Solo pedimos lo imprescindible para evitar errores de tipos
 const BodySchema = z.object({
-message: z.string().min(1),
-leadId: z.string().optional(),
-consent: z.boolean().optional()
+  message: z.string().min(1),
+  leadId: z.string().optional(),
 });
-
 
 function cors() {
-const origins = (process.env.LYLOBOT_ALLOWED_ORIGINS || "*").split(",").map(s=>s.trim());
-return {
-"Access-Control-Allow-Origin": origins.includes("*") ? "*" : origins[0] || "*",
-"Access-Control-Allow-Headers": "content-type",
-"Access-Control-Allow-Methods": "POST, OPTIONS"
-};
+  const origins = (process.env.LYLOBOT_ALLOWED_ORIGINS || "*")
+    .split(",")
+    .map((s) => s.trim());
+
+  return {
+    "Access-Control-Allow-Origin": origins.includes("*") ? "*" : origins[0] || "*",
+    "Access-Control-Allow-Headers": "content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
 }
 
-
-export async function OPTIONS() { return NextResponse.json({}, { headers: cors() }); }
-
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: cors() });
+}
 
 export async function POST(req: NextRequest) {
-try {
-const json = await req.json();
-const { message, leadId, consent } = BodySchema.parse(json);
+  try {
+    const json = await req.json();
+    const { message, leadId } = BodySchema.parse(json);
 
+    // 1) Buscar o crear el lead (sin consent para evitar el error de tipos)
+    let lead = leadId
+      ? await prisma.lead.findUnique({ where: { id: leadId } })
+      : null;
 
-let lead = leadId
-  ? await prisma.lead.findUnique({ where: { id: leadId } })
-  : null;
+    if (!lead) {
+      lead = await prisma.lead.create({ data: {} });
+    }
 
-if (!lead) {
-  // crear sin usar "consent" para evitar el error de tipo
-  lead = await prisma.lead.create({ data: {} });
-}
+    // 2) Guardar el mensaje del usuario
+    await prisma.message.create({
+      data: { leadId: lead.id, role: "user", content: message },
+    });
 
-// Si más abajo actualizabas "consent", comenta/bórralo por ahora:
-// if (typeof consent === "boolean" && lead && typeof lead.id === "string") {
-//   await prisma.lead.update({ where: { id: lead.id }, data: { consent } });
-// }
+    // 3) RAG opcional
+    const contextDocs = await searchRelevant(message, 4);
+    const context = contextDocs.map((d) => `# ${d.title}\n${d.text}`).join("\n\n");
 
+    // 4) Llamada a OpenAI
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: `Contexto (docs internos):\n${context}` },
+        { role: "user", content: message },
+      ],
+    });
 
+    const reply =
+      completion.choices?.[0]?.message?.content?.trim() ||
+      "Gracias, ¿te apetece agendar una llamada?";
 
-await prisma.message.create({ data: { leadId: lead.id, role: "user", content: message } });
+    // 5) Guardar respuesta del asistente
+    await prisma.message.create({
+      data: { leadId: lead.id, role: "assistant", content: reply },
+    });
 
-
-const contextDocs = await searchRelevant(message, 4);
-const context = contextDocs.map(d => `# ${d.title}\n${d.text}`).join("\n\n");
-
-
-const completion = await openai.chat.completions.create({
-model: "gpt-4o-mini",
-temperature: 0.3,
-messages: [
-{ role: "system", content: SYSTEM_PROMPT },
-{ role: "system", content: `Contexto (docs internos):\n${context}` },
-{ role: "user", content: message }
-]
-});
-
-
-const reply = completion.choices[0]?.message?.content?.trim() || "Gracias, ¿te apetece agendar una llamada?";
-
-
-await prisma.message.create({ data: { leadId: lead.id, role: "assistant", content: reply } });
-
-
-return NextResponse.json({ reply, leadId: lead.id }, { headers: cors() });
-} catch (e: any) {
-return NextResponse.json({ error: e.message }, { status: 400, headers: cors() });
-}
+    // 6) Responder
+    return NextResponse.json({ reply, leadId: lead.id }, { headers: cors() });
+  } catch (e: any) {
+    console.error(e);
+    return NextResponse.json(
+      { error: e?.message || "Bad request" },
+      { status: 400, headers: cors() }
+    );
+  }
 }
