@@ -1,20 +1,11 @@
-
+// lib/db.ts
 import { PrismaClient } from "@prisma/client";
 
-// Tipar correctamente globalThis para evitar el error de TS
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-  });
-
-// En desarrollo reutilizamos la instancia para evitar conexiones múltiples en hot-reload
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+declare global {
+  // eslint-disable-next-line no-var
+  var prisma: PrismaClient | undefined;
 }
 
-export default prisma;
+// Usa `global` (no `globalThis`) para evitar el error de índice
+export const prisma = global.prisma ?? new PrismaClient();
+if (process.env.NODE_ENV !== "production") global.prisma = prisma;
